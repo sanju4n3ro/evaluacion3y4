@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Predicción de Bacterias</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    #video {
+      width: 100%;
+      max-width: 300px;
+      margin-bottom: 10px;
+    }
+    #canvas {
+      display: none;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px 0;
+      cursor: pointer;
+    }
+    #result {
+      margin-top: 20px;
+      font-size: 20px;
+      color: green;
+    }
+  </style>
+</head>
+<body>
+  <h1>Predicción de Bacterias</h1>
+  <p>Modelo: *Streptococcus* vs *Staphylococcus*</p>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+  <button id="capture">Capturar Imagen</button>
+  <p id="result"></p>
+
+  <script>
+    let model;
+
+    // Cargar el modelo
+    async function loadModel() {
+      model = await tf.loadLayersModel('./tfjs_bacteria_model/model.json');
+      console.log("Modelo cargado correctamente.");
+    }
+    loadModel();
+
+    // Obtener acceso a la cámara
+    const video = document.getElementById("video");
+    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => {
+      video.srcObject = stream;
+    }).catch((error) => {
+      console.error("No se pudo acceder a la cámara:", error);
+    });
+
+    // Capturar imagen y realizar predicción
+    const canvas = document.getElementById("canvas");
+    const captureButton = document.getElementById("capture");
+    const resultText = document.getElementById("result");
+
+    captureButton.addEventListener("click", async () => {
+      const context = canvas.getContext("2d");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Preprocesar la imagen capturada
+      const imageData = tf.browser.fromPixels(canvas);
+      const resizedImage = tf.image.resizeBilinear(imageData, [64, 64]);
+      const normalizedImage = resizedImage.div(255.0).expandDims(0);
+
+      // Realizar predicción
+      const prediction = model.predict(normalizedImage);
+      const predictionData = await prediction.array();
+      const classIndex = predictionData[0].indexOf(Math.max(...predictionData[0]));
+      const confidence = Math.max(...predictionData[0]) * 100;
+
+      // Mostrar resultado
+      const labels = ["Streptococcus", "Staphylococcus"];
+      resultText.innerHTML = `Resultado: ${labels[classIndex]}<br>Confianza: ${confidence.toFixed(2)}%`;
+
+      // Liberar memoria
+      imageData.dispose();
+      resizedImage.dispose();
+      normalizedImage.dispose();
+      prediction.dispose();
+    });
+  </script>
+</body>
+</html>
