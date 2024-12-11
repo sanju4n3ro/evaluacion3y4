@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clasificación de Agua</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        #webcam, #outputCanvas {
+            width: 320px;
+            height: 240px;
+            margin: 10px auto;
+            display: block;
+        }
+        #imageUpload {
+            margin: 20px auto;
+        }
+        #prediction {
+            font-size: 1.2rem;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Clasificación de Agua</h1>
+    <p>Selecciona una imagen o activa la webcam para clasificar agua como limpia o sucia.</p>
+    <input type="file" id="imageUpload" accept="image/*">
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="outputCanvas"></canvas>
+    <p id="prediction">Predicción: <span id="result">-</span></p>
+
+    <script>
+        const MODEL_URL = './tfjs_water_quality_model'; // Cambia la ruta si está en otro directorio
+        let model;
+
+        // Cargar el modelo al inicio
+        async function loadModel() {
+            model = await tf.loadLayersModel(MODEL_URL + '/model.json');
+            console.log("Modelo cargado exitosamente");
+        }
+
+        // Preprocesar imagen para adaptarla al modelo
+        function preprocessImage(image) {
+            const tensor = tf.browser.fromPixels(image)
+                .resizeNearestNeighbor([64, 64]) // Redimensionar a 64x64
+                .toFloat()
+                .div(255.0) // Normalizar a [0, 1]
+                .expandDims(); // Agregar dimensión batch
+            return tensor;
+        }
+
+        // Realizar predicción
+        async function predict(imageElement) {
+            const processedImage = preprocessImage(imageElement);
+            const prediction = model.predict(processedImage);
+            const [clean, dirty] = prediction.arraySync()[0];
+            const label = clean > dirty ? "Agua Limpia" : "Agua Sucia";
+            const confidence = Math.max(clean, dirty).toFixed(2);
+            document.getElementById("result").textContent = `${label} (${confidence})`;
+        }
+
+        // Manejar subida de imágenes
+        document.getElementById('imageUpload').addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const img = document.createElement('img');
+                img.src = URL.createObjectURL(file);
+                img.onload = async () => {
+                    const canvas = document.getElementById('outputCanvas');
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    await predict(img);
+                };
+            }
+        });
+
+        // Configurar webcam
+        async function setupWebcam() {
+            const webcam = document.getElementById('webcam');
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: 320, height: 240 },
+                audio: false,
+            });
+            webcam.srcObject = stream;
+
+            webcam.addEventListener('loadeddata', () => {
+                setInterval(async () => {
+                    const canvas = document.getElementById('outputCanvas');
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+                    await predict(webcam);
+                }, 1000); // Predicciones cada segundo
+            });
+        }
+
+        // Inicializar
+        async function init() {
+            await loadModel();
+            setupWebcam();
+        }
+
+        init();
+    </script>
+</body>
+</html>
